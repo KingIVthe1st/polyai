@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import path from "path";
 
 const nextConfig: NextConfig = {
   // Output static files for Cloudflare Pages
@@ -24,8 +25,10 @@ const nextConfig: NextConfig = {
     "@walletconnect/universal-provider",
   ],
 
-  // Use empty turbopack config to enable it without custom settings
-  turbopack: {},
+  // Turbopack configuration
+  turbopack: {
+    root: path.dirname(new URL(import.meta.url).pathname),
+  },
 };
 
 export default nextConfig;

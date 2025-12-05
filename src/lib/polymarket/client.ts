@@ -15,7 +15,10 @@ import type {
   SearchResult,
 } from "./types";
 
-const GAMMA_API_URL = "https://gamma-api.polymarket.com";
+// Use proxy in production to avoid CORS issues
+const IS_BROWSER = typeof window !== "undefined";
+const USE_PROXY = IS_BROWSER;
+const GAMMA_API_URL = USE_PROXY ? "/api/polymarket" : "https://gamma-api.polymarket.com";
 const CLOB_API_URL = "https://clob.polymarket.com";
 
 class PolymarketAPIError extends Error {
@@ -226,6 +229,47 @@ export const clobApi = {
 };
 
 /**
+ * Helper to parse JSON strings that the API returns
+ */
+function parseJsonField<T>(value: string | T[] | undefined): T[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Normalize market data from API response
+ */
+function normalizeMarket(market: Market): Market {
+  const outcomes = parseJsonField<string>(market.outcomes);
+  const outcomePrices = parseJsonField<string>(market.outcomePrices);
+
+  return {
+    ...market,
+    outcomes,
+    outcomePrices,
+    // Parse prices into numbers for convenience
+    yesPrice: outcomePrices[0] ? parseFloat(outcomePrices[0]) : undefined,
+    noPrice: outcomePrices[1] ? parseFloat(outcomePrices[1]) : undefined,
+  };
+}
+
+/**
+ * Filter for valid, active markets
+ */
+function isValidActiveMarket(market: Market): boolean {
+  // Must be active and not closed
+  if (!market.active || market.closed) return false;
+  // Must have some activity
+  if ((market.volume24hr ?? 0) === 0 && (market.liquidityNum ?? 0) === 0) return false;
+  return true;
+}
+
+/**
  * Combined Polymarket client with helper methods
  */
 export const polymarket = {
@@ -237,14 +281,12 @@ export const polymarket = {
    */
   async getEnrichedMarket(id: string): Promise<Market & { yesPrice: number; noPrice: number }> {
     const market = await gammaApi.getMarket(id);
-
-    // Parse outcome prices
-    const [yesPrice, noPrice] = market.outcomePrices?.map(Number) || [0, 0];
+    const normalized = normalizeMarket(market);
 
     return {
-      ...market,
-      yesPrice,
-      noPrice,
+      ...normalized,
+      yesPrice: normalized.yesPrice ?? 0,
+      noPrice: normalized.noPrice ?? 0,
     };
   },
 
@@ -252,10 +294,12 @@ export const polymarket = {
    * Get trending markets (highest 24h volume)
    */
   async getTrendingMarkets(limit: number = 10): Promise<Market[]> {
-    const markets = await gammaApi.getMarkets({ active: true, limit: 100 });
+    const markets = await gammaApi.getMarkets({ active: true, closed: false, limit: 200 });
 
     return markets
-      .sort((a, b) => (b.volume24hr || 0) - (a.volume24hr || 0))
+      .map(normalizeMarket)
+      .filter(isValidActiveMarket)
+      .sort((a, b) => (b.volume24hr ?? 0) - (a.volume24hr ?? 0))
       .slice(0, limit);
   },
 
@@ -263,12 +307,14 @@ export const polymarket = {
    * Get markets ending soon
    */
   async getEndingSoonMarkets(limit: number = 10): Promise<Market[]> {
-    const markets = await gammaApi.getMarkets({ active: true, limit: 100 });
+    const markets = await gammaApi.getMarkets({ active: true, closed: false, limit: 200 });
     const now = new Date();
 
     return markets
+      .map(normalizeMarket)
+      .filter(isValidActiveMarket)
       .filter((m) => m.endDate && new Date(m.endDate) > now)
-      .sort((a, b) => new Date(a.endDate).getTime() - new Date(b.endDate).getTime())
+      .sort((a, b) => new Date(a.endDate!).getTime() - new Date(b.endDate!).getTime())
       .slice(0, limit);
   },
 
@@ -276,16 +322,19 @@ export const polymarket = {
    * Get hot markets (high volume + recent activity)
    */
   async getHotMarkets(limit: number = 10): Promise<Market[]> {
-    const markets = await gammaApi.getMarkets({ active: true, limit: 100 });
+    const markets = await gammaApi.getMarkets({ active: true, closed: false, limit: 200 });
 
     // Score based on volume, liquidity, and recency
-    const scored = markets.map((market) => {
-      const volumeScore = Math.log10((market.volume24hr || 0) + 1);
-      const liquidityScore = Math.log10(parseFloat(market.liquidity || "0") + 1);
-      const score = volumeScore * 0.6 + liquidityScore * 0.4;
+    const scored = markets
+      .map(normalizeMarket)
+      .filter(isValidActiveMarket)
+      .map((market) => {
+        const volumeScore = Math.log10((market.volume24hr ?? 0) + 1);
+        const liquidityScore = Math.log10((market.liquidityNum ?? parseFloat(market.liquidity || "0")) + 1);
+        const score = volumeScore * 0.6 + liquidityScore * 0.4;
 
-      return { market, score };
-    });
+        return { market, score };
+      });
 
     return scored
       .sort((a, b) => b.score - a.score)

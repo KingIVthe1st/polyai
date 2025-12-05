@@ -7,41 +7,49 @@
 export interface Market {
   id: string;
   question: string;
-  description: string;
+  description?: string;
   slug: string;
   conditionId: string;
 
   // Market state
   active: boolean;
   closed: boolean;
-  archived: boolean;
+  archived?: boolean;
 
-  // Tokens
-  clobTokenIds: string[];
-  outcomes: string[];
-  outcomePrices: string[];
+  // Tokens - API returns as JSON strings
+  clobTokenIds?: string | string[];
+  outcomes: string | string[];
+  outcomePrices: string | string[];
 
   // Volume and liquidity
-  volume: string;
-  volume24hr: number;
-  liquidity: string;
+  volume?: string;
+  volumeNum?: number;
+  volume24hr?: number;
+  volume1wk?: number;
+  volume1mo?: number;
+  liquidity?: string;
+  liquidityNum?: number;
 
   // Timing
-  startDate: string;
-  endDate: string;
-  createdAt: string;
-  updatedAt: string;
+  startDate?: string;
+  endDate?: string;
+  endDateIso?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  closedTime?: string;
 
   // Resolution
-  resolutionSource: string;
-  enableOrderBook: boolean;
+  resolutionSource?: string;
+  enableOrderBook?: boolean;
 
   // Categories
-  tags: Tag[];
+  tags?: Tag[];
+  category?: string;
 
   // Metadata
-  image: string;
-  icon: string;
+  image?: string;
+  icon?: string;
+  twitterCardImage?: string;
 
   // Computed fields (added by us)
   yesPrice?: number;

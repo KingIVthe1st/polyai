@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   TrendingUp,
@@ -19,144 +20,14 @@ import {
   BarChart3,
   ArrowUpRight,
   Eye,
+  WifiOff,
 } from "lucide-react";
 import { DashboardLayout } from "@/components/dashboard";
 import { MarketCard, FeaturedMarketCard } from "@/components/market";
 import { Button, Skeleton, Badge } from "@/components/ui";
 import { cn, formatCompact } from "@/lib/utils";
+import { polymarket } from "@/lib/polymarket/client";
 import type { Market } from "@/lib/polymarket/types";
-
-// Mock data for demonstration - in production, this would come from the Polymarket API
-const MOCK_MARKETS: Market[] = [
-  {
-    id: "1",
-    question: "Will Donald Trump win the 2024 Presidential Election?",
-    conditionId: "0x123",
-    slug: "trump-2024",
-    outcomes: ["Yes", "No"],
-    outcomePrices: ["0.52", "0.48"],
-    volume: "125000000",
-    volume24hr: 2500000,
-    liquidity: "8500000",
-    endDate: new Date("2024-11-05").toISOString(),
-    category: "Politics",
-    change24h: 0.03,
-    active: true,
-    closed: false,
-  },
-  {
-    id: "2",
-    question: "Will Bitcoin reach $100k by end of 2024?",
-    conditionId: "0x456",
-    slug: "btc-100k-2024",
-    outcomes: ["Yes", "No"],
-    outcomePrices: ["0.68", "0.32"],
-    volume: "45000000",
-    volume24hr: 890000,
-    liquidity: "3200000",
-    endDate: new Date("2024-12-31").toISOString(),
-    category: "Crypto",
-    change24h: 0.05,
-    active: true,
-    closed: false,
-  },
-  {
-    id: "3",
-    question: "Will the Fed cut rates in December 2024?",
-    conditionId: "0x789",
-    slug: "fed-cut-dec-2024",
-    outcomes: ["Yes", "No"],
-    outcomePrices: ["0.72", "0.28"],
-    volume: "28000000",
-    volume24hr: 450000,
-    liquidity: "2100000",
-    endDate: new Date("2024-12-18").toISOString(),
-    category: "Economics",
-    change24h: -0.02,
-    active: true,
-    closed: false,
-  },
-  {
-    id: "4",
-    question: "Will SpaceX Starship reach orbit by Q1 2025?",
-    conditionId: "0xabc",
-    slug: "starship-orbit-q1",
-    outcomes: ["Yes", "No"],
-    outcomePrices: ["0.45", "0.55"],
-    volume: "12000000",
-    volume24hr: 320000,
-    liquidity: "980000",
-    endDate: new Date("2025-03-31").toISOString(),
-    category: "Science",
-    change24h: 0.08,
-    active: true,
-    closed: false,
-  },
-  {
-    id: "5",
-    question: "Will AI generate a #1 Billboard hit in 2025?",
-    conditionId: "0xdef",
-    slug: "ai-billboard-2025",
-    outcomes: ["Yes", "No"],
-    outcomePrices: ["0.23", "0.77"],
-    volume: "8500000",
-    volume24hr: 180000,
-    liquidity: "620000",
-    endDate: new Date("2025-12-31").toISOString(),
-    category: "Entertainment",
-    change24h: 0.01,
-    active: true,
-    closed: false,
-  },
-  {
-    id: "6",
-    question: "Will GPT-5 be released by June 2025?",
-    conditionId: "0xghi",
-    slug: "gpt5-june-2025",
-    outcomes: ["Yes", "No"],
-    outcomePrices: ["0.35", "0.65"],
-    volume: "15000000",
-    volume24hr: 420000,
-    liquidity: "1100000",
-    endDate: new Date("2025-06-30").toISOString(),
-    category: "Technology",
-    change24h: -0.04,
-    active: true,
-    closed: false,
-  },
-  {
-    id: "7",
-    question: "Will Ethereum hit $5000 before BTC halving?",
-    conditionId: "0xjkl",
-    slug: "eth-5k-halving",
-    outcomes: ["Yes", "No"],
-    outcomePrices: ["0.28", "0.72"],
-    volume: "32000000",
-    volume24hr: 780000,
-    liquidity: "2400000",
-    endDate: new Date("2024-04-15").toISOString(),
-    category: "Crypto",
-    change24h: 0.06,
-    active: true,
-    closed: false,
-  },
-  {
-    id: "8",
-    question: "Will Apple release a foldable iPhone in 2025?",
-    conditionId: "0xmno",
-    slug: "apple-foldable-2025",
-    outcomes: ["Yes", "No"],
-    outcomePrices: ["0.18", "0.82"],
-    volume: "6200000",
-    volume24hr: 95000,
-    liquidity: "450000",
-    endDate: new Date("2025-12-31").toISOString(),
-    category: "Technology",
-    change24h: 0.00,
-    active: true,
-    closed: false,
-  },
-];
 
 // Stat card component
 function StatCard({
@@ -373,32 +244,60 @@ function ViewToggle({
 }
 
 export default function DashboardPage() {
-  const [isLoading, setIsLoading] = React.useState(true);
+  const queryClient = useQueryClient();
   const [view, setView] = React.useState<"grid" | "list">("grid");
-  const [markets, setMarkets] = React.useState<Market[]>([]);
-  const [isRefreshing, setIsRefreshing] = React.useState(false);
 
-  // Simulate loading markets
-  React.useEffect(() => {
-    const timer = setTimeout(() => {
-      setMarkets(MOCK_MARKETS);
-      setIsLoading(false);
-    }, 1500);
+  // Fetch hot markets from Polymarket API
+  const {
+    data: hotMarketsData,
+    isLoading: isLoadingHot,
+    error: hotError,
+    refetch: refetchHot,
+    isFetching: isFetchingHot,
+  } = useQuery({
+    queryKey: ["polymarket", "hot-markets"],
+    queryFn: () => polymarket.getHotMarkets(8),
+    staleTime: 30 * 1000, // 30 seconds
+    refetchInterval: 60 * 1000, // Auto-refresh every 60 seconds
+  });
 
-    return () => clearTimeout(timer);
-  }, []);
+  // Fetch trending markets from Polymarket API
+  const {
+    data: trendingMarketsData,
+    isLoading: isLoadingTrending,
+    error: trendingError,
+    refetch: refetchTrending,
+    isFetching: isFetchingTrending,
+  } = useQuery({
+    queryKey: ["polymarket", "trending-markets"],
+    queryFn: () => polymarket.getTrendingMarkets(6),
+    staleTime: 30 * 1000,
+    refetchInterval: 60 * 1000,
+  });
+
+  const isLoading = isLoadingHot || isLoadingTrending;
+  const isRefreshing = isFetchingHot || isFetchingTrending;
+  const hasError = hotError || trendingError;
 
   const handleRefresh = async () => {
-    setIsRefreshing(true);
-    // Simulate refresh
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    setIsRefreshing(false);
+    await Promise.all([refetchHot(), refetchTrending()]);
   };
 
-  // Get featured market (highest volume)
-  const featuredMarket = markets.length > 0 ? markets[0] : null;
-  const hotMarkets = markets.slice(1, 5);
-  const trendingMarkets = markets.slice(5);
+  // Get featured market (first hot market - highest score)
+  const featuredMarket = hotMarketsData?.[0] ?? null;
+  const hotMarkets = hotMarketsData?.slice(1, 5) ?? [];
+  const trendingMarkets = trendingMarketsData ?? [];
+
+  // Calculate total volume from markets
+  const totalVolume24h = React.useMemo(() => {
+    const allMarkets = [...(hotMarketsData ?? []), ...(trendingMarketsData ?? [])];
+    const uniqueMarkets = allMarkets.filter((m, i, arr) =>
+      arr.findIndex(x => x.id === m.id) === i
+    );
+    return uniqueMarkets.reduce((sum, m) => sum + (m.volume24hr || 0), 0);
+  }, [hotMarketsData, trendingMarketsData]);
+
+  const activeMarketsCount = (hotMarketsData?.length ?? 0) + (trendingMarketsData?.length ?? 0);
 
   return (
     <DashboardLayout>
@@ -434,6 +333,28 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* Error state */}
+        {hasError && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="p-4 rounded-xl bg-[var(--down-muted)] border border-[var(--down)]/30 flex items-center gap-3"
+          >
+            <WifiOff className="w-5 h-5 text-[var(--down)]" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-[var(--text-primary)]">
+                Unable to connect to Polymarket API
+              </p>
+              <p className="text-xs text-[var(--text-secondary)]">
+                Live data unavailable. Showing cached data if available.
+              </p>
+            </div>
+            <Button variant="outline" size="sm" onClick={handleRefresh}>
+              Retry
+            </Button>
+          </motion.div>
+        )}
+
         {/* Stats row */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {isLoading ? (
@@ -447,28 +368,25 @@ export default function DashboardPage() {
               <StatCard
                 icon={DollarSign}
                 label="Total Volume (24h)"
-                value="$18.2M"
-                change={12.5}
+                value={`$${formatCompact(totalVolume24h)}`}
                 gradient="bg-gradient-to-br from-[var(--up)] to-transparent"
               />
               <StatCard
                 icon={Activity}
-                label="Active Markets"
-                value="1,247"
-                change={3.2}
+                label="Markets Loaded"
+                value={String(activeMarketsCount)}
                 gradient="bg-gradient-to-br from-[var(--accent)] to-transparent"
               />
               <StatCard
                 icon={Eye}
                 label="Markets Watched"
-                value="24"
+                value="0"
                 gradient="bg-gradient-to-br from-[var(--hot)] to-transparent"
               />
               <StatCard
                 icon={AlertTriangle}
                 label="AI Alerts"
-                value="7"
-                change={-15}
+                value="0"
                 gradient="bg-gradient-to-br from-[var(--warning)] to-transparent"
               />
             </>
