@@ -1,11 +1,20 @@
 "use client";
 
 import * as React from "react";
-import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { Sidebar } from "./sidebar";
 import { GlobalTicker } from "./ticker";
 import { CommandPalette } from "./command-palette";
-import { cn } from "@/lib/utils";
+import { Wallet } from "lucide-react";
+
+// Placeholder wallet button (Phase 2 will add real wallet connection)
+function WalletButton() {
+  return (
+    <button className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent)]/80 text-white text-sm font-medium transition-colors">
+      <Wallet className="w-4 h-4" />
+      <span>Connect Wallet</span>
+    </button>
+  );
+}
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -37,15 +46,8 @@ export function DashboardLayout({ children, showTicker = true }: DashboardLayout
               {/* Command palette trigger */}
               <CommandPalette />
 
-              {/* Wallet connect */}
-              <ConnectButton
-                chainStatus="icon"
-                showBalance={false}
-                accountStatus={{
-                  smallScreen: "avatar",
-                  largeScreen: "full",
-                }}
-              />
+              {/* Wallet connect (Phase 2) */}
+              <WalletButton />
             </div>
           </div>
         </header>
